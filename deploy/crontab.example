@@ -1,0 +1,14 @@
+# Sellerboard Amazon sales data -> Power BI, every hour at :45 (server clock is UTC; :45 UTC = :15 IST).
+# Account premiumcarproduct, P&L "Last 30 days, by day":
+#   Amazon.com -> powerbidb.combined_transposed_file_US
+#   Amazon.ca  -> powerbidb.combined_transposed_file_CA
+# The other Sellerboard jobs (UK 07:30, US breakdown 08:00 UTC) share one Sellerboard login and switch its account,
+# so 07:45 is skipped; 08:45 is 45 minutes after the 08:00 job. A run takes ~3 minutes; `timeout -k 1m 20m` stops a
+# hung run, and the lock refuses an overlapping one (exit 11).
+# Every run moves two exports to data/processed/; the second line deletes those older than 30 days.
+# Install with `crontab -e`. Use absolute paths (`which uv`). Remove the old profit_and_loss_upload.py job.
+MAILTO=""
+#<<<<<<<<<<<<<<<<<<<<< Sellerboard-Amazon-Sales-Data Start >>>>>>>>>>>>>>>>>>>>>>
+45 0-6,8-23 * * * cd /data/cron/sellerboard-amazon-sales-data && timeout -k 1m 20m /root/.local/bin/uv run --no-sync python run.py --quiet >> logs/cron-output.log 2>&1
+15 9 * * * find /data/cron/sellerboard-amazon-sales-data/data/processed -type f -name '*.csv' -mtime +30 -delete
+#<<<<<<<<<<<<<<<<<<<< Sellerboard-Amazon-Sales-Data End >>>>>>>>>>>>>>>>>>>>>>

@@ -1,0 +1,15 @@
+{
+  "_help": "Profit > P&L for the premiumcarproduct account: 'Last 30 days, by day', one marketplace, Filter, download > .CSV. Recorded from the live page on 2026-10-28. {market} in pl_url is the marketplace from .env (Amazon.com, Amazon.ca). If Sellerboard changes the page, run `run.py --inspect-page` and update the selectors here.",
+  "account": "premiumcarproduct@gmail.com",
+  "account_opener": "a[data-accountfilter-opener]",
+  "pl_url": "https://app.sellerboard.com/en/dashboard/table?viewType=table&market%5B%5D={market}",
+  "market_select": "select.select-marketplaces",
+  "period_opener": ".dashboard-filters-periodsRanges-selection",
+  "period_item": "li.dashboard-filters-periodsRanges-dropdown-item",
+  "period": "Last 30 days, by day",
+  "period_url_value": "periodsTableRange=Last_30_days_by_day",
+  "filter_button": "button[ng-click^=\"applyFilters\"]",
+  "export_opener": "button.viewType-export",
+  "export_csv": "a[ng-click^=\"exportPeriodsTable('csv'\"]",
+  "download_timeout_seconds": 180
+}

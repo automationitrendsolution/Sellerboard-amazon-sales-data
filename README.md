@@ -203,6 +203,7 @@ Settings are read from `.env` in the project folder. Copy [`.env.example`](.env.
 | `SELLERBOARD_LOGIN_EMAIL` | | Used to sign in again automatically if the session expires (one attempt, then waits 24 hours) |
 | `SELLERBOARD_LOGIN_PASSWORD` | | As above |
 | `SELLERBOARD_SESSION_FILE` | | Saved session. Default `data/browser/session.json`; relative paths start from the project folder |
+| `SELLERBOARD_TIMEZONE` | | The browser's timezone. Default `UTC`; keep it. In a timezone west of UTC (for example a server on US time) Sellerboard names the export a day early, and the file is rejected |
 | `SALES_MARKETS` | | Default `US,CA` |
 | `US_MARKETPLACE`, `US_POWERBI_TABLE` | | Default `Amazon.com`, `combined_transposed_file_US` |
 | `CA_MARKETPLACE`, `CA_POWERBI_TABLE` | | Default `Amazon.ca`, `combined_transposed_file_CA` |

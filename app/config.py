@@ -76,6 +76,9 @@ class Settings:
     login_email: str | None = field(default=None, repr=False)
     login_password: str | None = field(default=None, repr=False)
     shared_session_file: Path | None = None  # reuse another project's Sellerboard session
+    # The browser's timezone. Sellerboard names the export from dates held as midnight UTC, shown in the browser's
+    # timezone: west of UTC (a server on US time) the name is a day early and no longer matches the days inside.
+    timezone: str = "UTC"
 
     @property
     def incoming_dir(self) -> Path:
@@ -126,6 +129,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         login_email=_env("SELLERBOARD_LOGIN_EMAIL"),
         login_password=_env("SELLERBOARD_LOGIN_PASSWORD"),
         shared_session_file=_project_path(session) if session else None,
+        timezone=_env("SELLERBOARD_TIMEZONE", "UTC") or "UTC",
     )
 
 

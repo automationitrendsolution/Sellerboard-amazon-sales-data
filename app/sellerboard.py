@@ -219,7 +219,7 @@ def _open(p, settings: Settings, headless: bool):
         raise SignInNeeded(f"no saved session at {settings.session_file}: run `python run.py --login`")
     browser = p.chromium.launch(headless=headless)
     context = browser.new_context(storage_state=str(settings.session_file), accept_downloads=True,
-                                  viewport={"width": 1600, "height": 1000})
+                                  viewport={"width": 1600, "height": 1000}, timezone_id=settings.timezone)
     return browser, context
 
 
@@ -252,6 +252,25 @@ def _selected_markets(page, sel: dict) -> list[str]:
     return page.locator(sel["market_select"]).first.evaluate("s => [...s.selectedOptions].map(o => o.value)")
 
 
+def _choose_period(page, sel: dict, attempts: int = 3) -> None:
+    """Open the period list and pick the period. While the page is still settling the list sometimes
+    ignores the click, so close it and click again."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    item = page.locator(sel["period_item"], has_text=sel["period"]).first
+    for attempt in range(1, attempts + 1):
+        page.locator(sel["period_opener"]).first.click(timeout=30_000)
+        try:
+            item.click(timeout=10_000)
+            return
+        except PlaywrightTimeout:
+            if attempt == attempts:
+                raise
+            log.info("the period list did not open; trying again (%d/%d)", attempt + 1, attempts)
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(3_000)
+
+
 def fetch_pl(settings: Settings, market: Market, *, headless: bool = True) -> Path:
     """Export the P&L, last 30 days by day, for one marketplace into data/incoming/<CODE>_<file>.csv."""
     from playwright.sync_api import Error as PlaywrightError
@@ -270,8 +289,7 @@ def fetch_pl(settings: Settings, market: Market, *, headless: bool = True) -> Pa
             step = "select the account"
             _ensure_account(page, sel, settings, url)
             step = f"choose '{sel['period']}'"
-            page.locator(sel["period_opener"]).first.click(timeout=30_000)
-            page.locator(sel["period_item"], has_text=sel["period"]).first.click(timeout=30_000)
+            _choose_period(page, sel)
             step = "click Filter"
             page.locator(sel["filter_button"]).first.click(timeout=30_000)
             page.wait_for_load_state("networkidle", timeout=90_000)

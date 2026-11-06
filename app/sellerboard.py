@@ -229,6 +229,34 @@ def _visible(page, selector: str, **kwargs):
     return page.locator(selector, **kwargs).filter(visible=True).first
 
 
+# Hides the fixed-position layers (overlay, pop-up) lying over the control's centre; returns what it hid.
+_UNCOVER_JS = """el => {
+    el.scrollIntoView({block: 'center'});
+    const hidden = [];
+    for (let i = 0; i < 5; i++) {
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (!top || el.contains(top) || top.contains(el)) break;
+        let cover = null;
+        for (let n = top; n && n !== document.body; n = n.parentElement)
+            if (getComputedStyle(n).position === 'fixed') cover = n;
+        if (!cover || cover.contains(el)) break;
+        hidden.push(String(cover.className || cover.tagName).slice(0, 60));
+        cover.style.setProperty('display', 'none', 'important');
+    }
+    return hidden;
+}"""
+
+
+def _uncover(locator):
+    """Make sure a click on this control reaches it. Sellerboard's announcements ("sellerboard MCP update",
+    Nov 2026) dim the whole page until dismissed, and a saved session never dismisses them."""
+    hidden = locator.evaluate(_UNCOVER_JS)
+    if hidden:
+        log.info("hid a pop-up covering the page: %s", "; ".join(hidden))
+    return locator
+
+
 def _settle(page, timeout_ms: int = 20_000) -> None:
     """Wait briefly for the network to go quiet. Sellerboard keeps polling, so it may never be idle."""
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
@@ -261,8 +289,8 @@ def _ensure_account(page, sel: dict, settings: Settings, url: str) -> None:
     opener = _visible(page, sel["account_opener"])
     if opener.inner_text().strip() == wanted:
         return
-    opener.click(timeout=30_000)
-    page.get_by_text(wanted, exact=True).filter(visible=True).first.click(timeout=30_000)
+    _uncover(opener).click(timeout=30_000)
+    _uncover(page.get_by_text(wanted, exact=True).filter(visible=True).first).click(timeout=30_000)
     _settle(page, 60_000)
     _goto(page, url, sel["period_opener"])
     current = _visible(page, sel["account_opener"]).inner_text().strip()
@@ -282,7 +310,7 @@ def _choose_period(page, sel: dict, attempts: int = 3) -> None:
 
     item = _visible(page, sel["period_item"], has_text=sel["period"])
     for attempt in range(1, attempts + 1):
-        _visible(page, sel["period_opener"]).click(timeout=30_000)
+        _uncover(_visible(page, sel["period_opener"])).click(timeout=30_000)
         try:
             item.click(timeout=10_000)
             return
@@ -318,7 +346,7 @@ def fetch_pl(settings: Settings, market: Market, *, headless: bool = True) -> Pa
             step = "click Filter"
             # Disabled when the page already shows these filters (nothing to apply); they are checked next.
             if _visible(page, sel["filter_button"]).is_enabled():
-                _visible(page, sel["filter_button"]).click(timeout=30_000)
+                _uncover(_visible(page, sel["filter_button"])).click(timeout=30_000)
                 _visible(page, sel["period_opener"]).wait_for(state="visible", timeout=90_000)
                 _settle(page, 30_000)
 
@@ -330,9 +358,9 @@ def fetch_pl(settings: Settings, market: Market, *, headless: bool = True) -> Pa
                                   f"{sel['period']!r}; nothing downloaded")
 
             step = "download the .CSV"
-            _visible(page, sel["export_opener"]).click(timeout=30_000)
+            _uncover(_visible(page, sel["export_opener"])).click(timeout=30_000)
             with page.expect_download(timeout=timeout_ms) as pending:
-                _visible(page, sel["export_csv"]).click(timeout=30_000)
+                _uncover(_visible(page, sel["export_csv"])).click(timeout=30_000)
             download = pending.value
             target = settings.incoming_dir / f"{market.code}_{download.suggested_filename}"
             if target.exists():

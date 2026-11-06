@@ -316,9 +316,11 @@ def fetch_pl(settings: Settings, market: Market, *, headless: bool = True) -> Pa
                 step = f"choose '{sel['period']}'"
                 _choose_period(page, sel)
             step = "click Filter"
-            _visible(page, sel["filter_button"]).click(timeout=30_000)
-            _visible(page, sel["period_opener"]).wait_for(state="visible", timeout=90_000)
-            _settle(page, 30_000)
+            # Disabled when the page already shows these filters (nothing to apply); they are checked next.
+            if _visible(page, sel["filter_button"]).is_enabled():
+                _visible(page, sel["filter_button"]).click(timeout=30_000)
+                _visible(page, sel["period_opener"]).wait_for(state="visible", timeout=90_000)
+                _settle(page, 30_000)
 
             step = "check the filters"
             shown = _visible(page, sel["period_opener"]).inner_text().strip()

@@ -65,7 +65,7 @@ def _screenshot(page, settings: Settings, name: str) -> Path:
     path = settings.screenshot_dir / f"{dt.datetime.now():%Y%m%d-%H%M%S}-{name}.png"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        page.screenshot(path=str(path), full_page=True)
+        page.screenshot(path=str(path), timeout=30_000)  # the visible part; a full-page shot of the P&L times out
     except Exception:
         pass
     return path
@@ -223,11 +223,34 @@ def _open(p, settings: Settings, headless: bool):
     return browser, context
 
 
-def _goto(page, url: str) -> None:
-    page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-    page.wait_for_load_state("networkidle", timeout=60_000)
-    if is_login_page(page.url):
-        raise SignInNeeded("Sellerboard ended the saved session: run `python run.py --login`")
+def _visible(page, selector: str, **kwargs):
+    """The first visible match. Sellerboard keeps hidden copies of its filter controls (four period pickers
+    since Nov 2026), and the first match in the page is not always the one on screen."""
+    return page.locator(selector, **kwargs).filter(visible=True).first
+
+
+def _settle(page, timeout_ms: int = 20_000) -> None:
+    """Wait briefly for the network to go quiet. Sellerboard keeps polling, so it may never be idle."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout_ms)
+    except PlaywrightTimeout:
+        pass
+
+
+def _goto(page, url: str, ready: str) -> None:
+    """Open the page and wait until the `ready` control is on screen."""
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    page.goto(url, wait_until="domcontentloaded", timeout=90_000)
+    try:
+        _visible(page, ready).wait_for(state="visible", timeout=90_000)
+    except PlaywrightTimeout:
+        if is_login_page(page.url):
+            raise SignInNeeded("Sellerboard ended the saved session: run `python run.py --login`") from None
+        raise
+    _settle(page)
 
 
 def _ensure_account(page, sel: dict, settings: Settings, url: str) -> None:
@@ -235,14 +258,14 @@ def _ensure_account(page, sel: dict, settings: Settings, url: str) -> None:
     wanted = settings.account or sel.get("account")
     if not wanted:
         return
-    opener = page.locator(sel["account_opener"]).first
+    opener = _visible(page, sel["account_opener"])
     if opener.inner_text().strip() == wanted:
         return
     opener.click(timeout=30_000)
-    page.get_by_text(wanted, exact=True).first.click(timeout=30_000)
-    page.wait_for_load_state("networkidle", timeout=90_000)
-    _goto(page, url)
-    current = page.locator(sel["account_opener"]).first.inner_text().strip()
+    page.get_by_text(wanted, exact=True).filter(visible=True).first.click(timeout=30_000)
+    _settle(page, 60_000)
+    _goto(page, url, sel["period_opener"])
+    current = _visible(page, sel["account_opener"]).inner_text().strip()
     if current != wanted:
         raise PageChanged(f"could not switch to Sellerboard account {wanted!r} (still {current!r})")
     log.info("switched Sellerboard account to %s", wanted)
@@ -257,9 +280,9 @@ def _choose_period(page, sel: dict, attempts: int = 3) -> None:
     ignores the click, so close it and click again."""
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
-    item = page.locator(sel["period_item"], has_text=sel["period"]).first
+    item = _visible(page, sel["period_item"], has_text=sel["period"])
     for attempt in range(1, attempts + 1):
-        page.locator(sel["period_opener"]).first.click(timeout=30_000)
+        _visible(page, sel["period_opener"]).click(timeout=30_000)
         try:
             item.click(timeout=10_000)
             return
@@ -279,32 +302,35 @@ def fetch_pl(settings: Settings, market: Market, *, headless: bool = True) -> Pa
 
     sel = load_selectors(settings)
     timeout_ms = int(sel.get("download_timeout_seconds", 180)) * 1000
-    url = sel["pl_url"].format(market=quote(market.marketplace))
+    # The period is in the URL, so the page opens on it; the period list is only a fallback.
+    url = sel["pl_url"].format(market=quote(market.marketplace)) + "&" + sel["period_url_value"]
     with sync_playwright() as p:
         browser, context = _open(p, settings, headless)
         page = context.new_page()
         step = "open the P&L page"
         try:
-            _goto(page, url)
+            _goto(page, url, sel["period_opener"])
             step = "select the account"
             _ensure_account(page, sel, settings, url)
-            step = f"choose '{sel['period']}'"
-            _choose_period(page, sel)
+            if _visible(page, sel["period_opener"]).inner_text().strip() != sel["period"]:
+                step = f"choose '{sel['period']}'"
+                _choose_period(page, sel)
             step = "click Filter"
-            page.locator(sel["filter_button"]).first.click(timeout=30_000)
-            page.wait_for_load_state("networkidle", timeout=90_000)
+            _visible(page, sel["filter_button"]).click(timeout=30_000)
+            _visible(page, sel["period_opener"]).wait_for(state="visible", timeout=90_000)
+            _settle(page, 30_000)
 
             step = "check the filters"
-            shown = page.locator(sel["period_opener"]).first.inner_text().strip()
+            shown = _visible(page, sel["period_opener"]).inner_text().strip()
             markets = _selected_markets(page, sel)
             if markets != [market.marketplace] or shown != sel["period"] or sel["period_url_value"] not in page.url:
                 raise PageChanged(f"the page shows {markets} / {shown!r}, not [{market.marketplace!r}] / "
                                   f"{sel['period']!r}; nothing downloaded")
 
             step = "download the .CSV"
-            page.locator(sel["export_opener"]).first.click(timeout=30_000)
+            _visible(page, sel["export_opener"]).click(timeout=30_000)
             with page.expect_download(timeout=timeout_ms) as pending:
-                page.locator(sel["export_csv"]).first.click(timeout=30_000)
+                _visible(page, sel["export_csv"]).click(timeout=30_000)
             download = pending.value
             target = settings.incoming_dir / f"{market.code}_{download.suggested_filename}"
             if target.exists():
@@ -336,7 +362,7 @@ def inspect_page(settings: Settings, *, headless: bool = True) -> tuple[Path, Pa
         browser, context = _open(p, settings, headless)
         page = context.new_page()
         try:
-            _goto(page, url)
+            _goto(page, url, sel["period_opener"])
             shot = _screenshot(page, settings, "inspect")
             controls = page.evaluate("""() => [...document.querySelectorAll(
                 'button, a, input, select, li, [role=button], [data-toggle], [ng-click]')]

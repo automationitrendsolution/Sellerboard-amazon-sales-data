@@ -60,15 +60,16 @@ Amazon.com and Amazon.ca run independently: if one fails, the other still comple
 
 ## Schedule
 
-The job runs **every hour at :45 (UTC)**, 23 times a day.
+The job runs **every hour at :45**, 23 times a day. Times are the cron server's clock, **New York time**
+(`America/New_York`): 9½ hours behind IST in summer (EDT), 10½ hours in winter (EST).
 
 | | |
 | --- | --- |
-| Runs at | 00:45 – 06:45 and 08:45 – 23:45 UTC (06:15 – 12:15 and 14:15 – 05:15 IST) |
-| Skipped | 07:45 UTC: the other Sellerboard jobs (UK 07:30, US breakdown 08:00) share the same Sellerboard login and switch its account |
+| Runs at | 00:45 – 06:45 and 08:45 – 23:45 New York time |
+| Skipped | 07:45 (17:15 IST in summer, 18:15 IST in winter): the other Sellerboard jobs on this server (UK 07:30, US breakdown 08:00) share the same Sellerboard login and switch its account |
 | Duration | about 3 minutes; a run that hangs is stopped after 20 minutes |
 | Overlap | a second run that starts while one is still going stops immediately (exit 11) |
-| Cleanup | once a day at 09:15 UTC, uploaded exports older than 30 days are deleted |
+| Cleanup | once a day at 09:15, uploaded exports older than 30 days are deleted |
 
 Each run refreshes all 30 days, so today's figures stay current during the day and Sellerboard's later corrections
 reach Power BI automatically.
@@ -203,7 +204,7 @@ Settings are read from `.env` in the project folder. Copy [`.env.example`](.env.
 | `SELLERBOARD_LOGIN_EMAIL` | | Used to sign in again automatically if the session expires (one attempt, then waits 24 hours) |
 | `SELLERBOARD_LOGIN_PASSWORD` | | As above |
 | `SELLERBOARD_SESSION_FILE` | | Saved session. Default `data/browser/session.json`; relative paths start from the project folder |
-| `SELLERBOARD_TIMEZONE` | | The browser's timezone. Default `UTC`; keep it. In a timezone west of UTC (for example a server on US time) Sellerboard names the export a day early, and the file is rejected |
+| `SELLERBOARD_TIMEZONE` | | The browser's timezone. Default `UTC`; keep it. In a timezone west of UTC (such as the cron server's New York time) Sellerboard names the export a day early, and the file is rejected |
 | `SALES_MARKETS` | | Default `US,CA` |
 | `US_MARKETPLACE`, `US_POWERBI_TABLE` | | Default `Amazon.com`, `combined_transposed_file_US` |
 | `CA_MARKETPLACE`, `CA_POWERBI_TABLE` | | Default `Amazon.ca`, `combined_transposed_file_CA` |
